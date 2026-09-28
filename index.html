@@ -456,10 +456,15 @@ function load() {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return false;
-    const data = JSON.parse(raw), base = freshState();
-    S = Object.assign(base, data);
-    S.b = Object.assign(base.b, freshState().b, data.b);
-    S.m = Object.assign(freshState().m, data.m);
+    const data = JSON.parse(raw), fresh = freshState();
+    // merge onto fresh defaults so older saves still get any newly added fields
+    S = Object.assign(fresh, data, {
+      b: Object.assign(freshState().b, data.b),
+      m: Object.assign(freshState().m, data.m),
+      flags: Object.assign({}, data.flags),
+      done: Object.assign({}, data.done),
+      planets: Object.assign({ earth: true }, data.planets),
+    });
     return true;
   } catch (e) { return false; }
 }
@@ -726,8 +731,11 @@ function initUI() {
   render();
   requestAnimationFrame(drawMap);
   setInterval(() => { tick(); render(); }, DT * 1000);
-  setInterval(save, 5000);
+  setInterval(save, 2000);
+  // iPad Safari often skips beforeunload, so also save whenever the page is hidden
   addEventListener('beforeunload', save);
+  addEventListener('pagehide', save);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') save(); });
 }
 
 if (typeof document !== 'undefined') initUI();
