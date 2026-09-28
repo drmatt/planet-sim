@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Planet Sim</title>
+<style>
+  :root {
+    --bg: #0a0d19; --panel: #070912; --line: #262d58; --text: #dfe4ff; --muted: #8189b5;
+    --accent: #ffd166; --good: #6ee7a8; --btn: #1a2046; --btnline: #3a4380;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); margin: 0;
+    font: 14px/1.5 "Courier New", ui-monospace, Menlo, monospace; }
+  #wrap { max-width: 1200px; margin: 0 auto; padding: 12px 16px 60px; }
+  h1 { font-size: 18px; letter-spacing: 4px; margin: 4px 0 8px; }
+  h1 span { color: var(--muted); font-size: 12px; letter-spacing: 1px; font-weight: normal; margin-left: 10px; }
+  #log { height: 7.6em; overflow: hidden; border: 1px solid var(--line); padding: 6px 10px; background: var(--panel); }
+  #log div:first-child { color: var(--accent); }
+  #log div:nth-child(n+3) { opacity: .6; }
+  #log div:nth-child(n+5) { opacity: .35; }
+  canvas#map { width: 100%; height: 130px; display: block; border: 1px solid var(--line); background: #04050b; margin: 8px 0; }
+  #big { font-size: 26px; margin: 10px 0 6px; }
+  #big small { font-size: 14px; color: var(--muted); }
+  button { font: inherit; background: var(--btn); color: var(--text); border: 1px solid var(--btnline);
+    padding: 3px 10px; border-radius: 3px; cursor: pointer; }
+  button:hover:not(:disabled) { background: #252c5e; }
+  button:disabled { opacity: .35; cursor: default; }
+  button.big { font-size: 18px; padding: 8px 22px; }
+  button.on { border-color: var(--accent); color: var(--accent); }
+  .cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; }
+  @media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
+  h2 { font-size: 14px; border-bottom: 1px solid var(--line); margin: 16px 0 6px; padding-bottom: 3px; letter-spacing: 2px; }
+  .row { margin: 4px 0; }
+  .muted { color: var(--muted); }
+  .hidden { display: none !important; }
+  .bld { margin: 8px 0; }
+  .bld .cost { color: var(--muted); font-size: 12px; }
+  .proj { display: block; width: 100%; text-align: left; margin: 6px 0; padding: 6px 8px; }
+  .proj .t { font-weight: bold; }
+  .proj .c { color: var(--accent); }
+  .proj .d { color: var(--muted); font-size: 12px; }
+  .bar { height: 10px; background: var(--btn); border: 1px solid var(--line); margin: 4px 0; }
+  .bar > div { height: 100%; background: var(--accent); width: 0; }
+  .seg button { padding: 1px 7px; }
+  .fact { color: var(--good); font-size: 12px; }
+  #footer { margin-top: 30px; color: var(--muted); font-size: 12px; }
+  #footer button { font-size: 12px; }
+  #win { position: fixed; inset: 0; background: rgba(0,0,0,.85); display: flex; align-items: center; justify-content: center; z-index: 5; }
+  #win .box { background: var(--panel); border: 1px solid var(--accent); padding: 30px 40px; max-width: 520px; text-align: center; margin: 16px; }
+  #win h2 { border: none; font-size: 24px; color: var(--accent); }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <h1>PLANET SIM <span id="clock"></span></h1>
+  <div id="log"></div>
+  <canvas id="map"></canvas>
+
+  <div id="big">Ore: <span id="oreBig">0</span> <small id="oreRateBig"></small></div>
+  <button class="big" id="mineBtn">⛏ Mine Ore</button>
+
+  <div class="cols">
+    <!-- ================= COLUMN 1 ================= -->
+    <div>
+      <div id="secBusiness">
+        <h2>BUSINESS</h2>
+        <div class="row">Money: <b>$<span id="credits">0</span></b></div>
+        <div class="row">Unsold ore: <span id="ore">0</span></div>
+        <div class="row">
+          <button id="priceDown">lower</button> <button id="priceUp">raise</button>
+          Price per ore: $<span id="price">0.25</span>
+        </div>
+        <div class="row">Demand: <span id="demand">0</span> ore/sec</div>
+        <div class="row"><button id="sellBtn" class="on">Selling: ON</button></div>
+        <div class="row hidden" id="aiRow">
+          <button id="aiBtn">Smart Pricing: OFF</button>
+          <span class="seg" id="sellPct"></span>
+          <div class="muted" style="font-size:12px">The AI sets the price so it sells this much of your ore.</div>
+        </div>
+        <div class="row hidden" id="mktRow">
+          <button id="mktBtn">Marketing</button> Level: <span id="mktLvl">0</span>
+          <span class="cost muted" id="mktCost"></span>
+        </div>
+      </div>
+
+      <div id="secMining" class="hidden">
+        <h2>MINING</h2>
+        <div class="row">Ore per second: <span id="oreRate">0</span></div>
+        <div id="bld-mining"></div>
+      </div>
+    </div>
+
+    <!-- ================= COLUMN 2 ================= -->
+    <div>
+      <div id="secResearch" class="hidden">
+        <h2>RESEARCH</h2>
+        <div class="row">Science: <b><span id="science">0</span></b> <span class="muted">(+<span id="sciRate">0</span>/sec)</span></div>
+        <div id="bld-research"></div>
+      </div>
+      <div id="secProjects" class="hidden">
+        <h2>PROJECTS</h2>
+        <div id="projects"></div>
+      </div>
+    </div>
+
+    <!-- ================= COLUMN 3 ================= -->
+    <div>
+      <div id="secSpace" class="hidden">
+        <h2>SPACE PROGRAM</h2>
+        <div id="launchBox">
+          <div class="row">Next destination: <b id="destName"></b></div>
+          <div class="row cost muted" id="destCost"></div>
+          <button id="launchBtn">🚀 Launch!</button>
+        </div>
+        <div id="travelBox" class="hidden">
+          <div class="row">🚀 Flying to <b id="travelName"></b>… <span id="travelLeft"></span></div>
+          <div class="bar"><div id="travelBar"></div></div>
+        </div>
+        <div class="row muted" id="colonized"></div>
+      </div>
+      <div id="secColonies" class="hidden">
+        <h2>COLONIES</h2>
+        <div class="row" id="he3Row">Helium-3: <b><span id="he3">0</span></b> <span class="muted">(+<span id="he3Rate">0</span>/sec)</span></div>
+        <div class="row hidden" id="colRow">Colonists: <b><span id="colonists">0</span></b> / <span id="colCap">0</span></div>
+        <div class="row hidden" id="bonusRow">Production bonus: <b>×<span id="allMult">1</span></b></div>
+        <div class="row hidden" id="dysonRow">Dyson Sphere: <span id="dysonPct">0</span>%
+          <div class="bar"><div id="dysonBar"></div></div></div>
+        <div id="bld-colonies"></div>
+      </div>
+      <div id="buyAmtRow" class="row hidden" style="margin-top:14px">Buy: <span class="seg" id="buyAmt"></span></div>
+    </div>
+  </div>
+
+  <div id="footer">
+    Progress saves automatically. &nbsp;<button id="resetBtn">Start over</button>
+  </div>
+</div>
+
+<div id="win" class="hidden"><div class="box">
+  <h2>🌟 YOU DID IT! 🌟</h2>
+  <p>Your starship has left the Solar System and is heading for <b>Alpha Centauri</b>, the nearest star.</p>
+  <p id="winStats" class="muted"></p>
+  <p>Play again and everything will be <b>twice as fast</b>.</p>
+  <button class="big" id="ngBtn">⭐ New Game+</button>
+  <p><button id="keepBtn">Keep looking around</button></p>
+</div></div>
+
+<script>
+// =====================================================================
+//  GAME LOGIC (no DOM in this part)
+// =====================================================================
+const DT = 0.1; // seconds per tick
+
+const BUILDINGS = [
+  { id: 'drill', name: 'Drills', sec: 'mining', desc: 'Each mines 1 ore/sec',
+    unlock: s => s.creditsTotal >= 3, cost: n => ({ credits: 4 * 1.1 ** n }) },
+  { id: 'scientist', name: 'Scientists', sec: 'research', desc: 'Each makes 0.25 science/sec',
+    unlock: s => s.b.drill >= 3, cost: n => ({ credits: 15 * 1.15 ** n }) },
+  { id: 'harvester', name: 'Helium-3 Harvesters', sec: 'colonies', planet: 'moon', desc: 'Moon dust → 0.4 Helium-3/sec. Rocket fuel!',
+    cost: n => ({ credits: 400 * 1.12 ** n }) },
+  { id: 'habitat', name: 'Mars Habitats', sec: 'colonies', planet: 'mars', desc: 'Room for 10 colonists. Colonists mine 5 ore/sec and do science',
+    cost: n => ({ credits: 1500 * 1.15 ** n, ore: 2000 * 1.15 ** n }) },
+  { id: 'cloudcity', name: 'Cloud Cities', sec: 'colonies', planet: 'venus', desc: 'Floating city with room for 100 colonists',
+    cost: n => ({ credits: 50000 * 1.15 ** n, he3: 1500 * 1.15 ** n }) },
+  { id: 'solar', name: 'Solar Arrays', sec: 'colonies', planet: 'mercury', desc: '+10% to ALL production each',
+    cost: n => ({ ore: 60000 * 1.15 ** n }) },
+  { id: 'ship', name: 'Mining Ships', sec: 'mining', planet: 'belt', desc: 'Each mines 2,000 ore/sec from asteroids',
+    cost: n => ({ ore: 200000 * 1.1 ** n, he3: 500 * 1.1 ** n }) },
+  { id: 'scoop', name: 'Gas Scoops', sec: 'colonies', planet: 'jupiter', desc: 'Dive into Jupiter → 100 Helium-3/sec',
+    cost: n => ({ ore: 1e6 * 1.1 ** n }) },
+  { id: 'ring', name: 'Ring Collectors', sec: 'mining', planet: 'saturn', desc: 'Each mines 50,000 ore/sec from Saturn\'s rings',
+    cost: n => ({ ore: 1e7 * 1.1 ** n, he3: 2e4 * 1.1 ** n }) },
+  { id: 'telescope', name: 'Deep Space Telescopes', sec: 'research', planet: 'uranus', desc: 'Each makes 1,000 science/sec',
+    cost: n => ({ ore: 1e8 * 1.15 ** n }) },
+  { id: 'diamond', name: 'Diamond Rain Catchers', sec: 'mining', planet: 'neptune', desc: 'Each catches 2 million ore/sec of diamond rain',
+    cost: n => ({ ore: 1e9 * 1.1 ** n, he3: 1e6 * 1.1 ** n }) },
+  { id: 'dyson', name: 'Dyson Panels', sec: 'colonies', planet: 'pluto', desc: 'Giant mirrors around the Sun. +5% ALL production each. Build 100!',
+    cost: n => ({ ore: 2e10 * 1.06 ** n, he3: 2e7 * 1.06 ** n }) },
+];
+const BMAP = Object.fromEntries(BUILDINGS.map(b => [b.id, b]));
+// what one of each building makes right now, with all upgrades (shown in the UI)
+const EACH = {
+  drill: s => [s.m.drill * allMult(s), 'ore'],
+  scientist: s => [0.25 * s.m.scientist * s.m.sci * allMult(s), 'science'],
+  harvester: s => [0.4 * s.m.he3 * allMult(s), 'He-3'],
+  ship: s => [2000 * s.m.ship * allMult(s), 'ore'],
+  scoop: s => [100 * s.m.he3 * allMult(s), 'He-3'],
+  ring: s => [5e4 * s.m.ring * allMult(s), 'ore'],
+  telescope: s => [1000 * s.m.sci * allMult(s), 'science'],
+  diamond: s => [2e6 * s.m.diamond * allMult(s), 'ore'],
+};
+
+// Destinations in the order you unlock them
+const DESTS = [
+  { id: 'moon', name: 'the Moon', cost: { credits: 2500, ore: 1500 }, travel: 15,
+    bonus: s => { s.m.demand *= 2; }, bonusText: 'Moon Base buys ore (demand ×2)',
+    msg: ['🌕 Moon Base built! The Moon is 384,000 km from Earth.', 'The lunar dust is full of Helium-3 — perfect rocket fuel.'] },
+  { id: 'mars', name: 'Mars', cost: { credits: 12000, ore: 15000, he3: 150 }, travel: 25,
+    bonus: s => { s.m.demand *= 2; }, bonusText: 'Martians buy ore (demand ×2)',
+    msg: ['🔴 Welcome to Mars! It\'s red because its dust is rusty iron.', 'Build Habitats so colonists can live here.'] },
+  { id: 'venus', name: 'Venus', cost: { credits: 100000, ore: 100000, he3: 1500 }, travel: 30,
+    bonus: s => { s.m.demand *= 2; s.m.sci *= 2; }, bonusText: 'Science ×2, demand ×2',
+    msg: ['🟡 Venus is the hottest planet — hot enough to melt lead!', 'So we built cities floating in the clouds instead.'] },
+  { id: 'mercury', name: 'Mercury', cost: { ore: 1e6, he3: 8000, science: 5000 }, travel: 30,
+    bonus: s => { s.m.demand *= 2; }, bonusText: 'Demand ×2',
+    msg: ['☿️ Mercury is the closest planet to the Sun. A year there is only 88 days!', 'Tons of sunlight — perfect for Solar Arrays.'] },
+  { id: 'belt', name: 'the Asteroid Belt', cost: { ore: 8e6, he3: 40000, science: 30000 }, travel: 35,
+    bonus: s => { s.m.demand *= 3; }, bonusText: 'Demand ×3',
+    msg: ['☄️ The Asteroid Belt: millions of space rocks between Mars and Jupiter.', 'Some asteroids are solid metal. Time for Mining Ships!'] },
+  { id: 'jupiter', name: 'Jupiter', cost: { ore: 6e7, he3: 8e4, science: 1e5 }, travel: 40,
+    bonus: s => { s.m.he3 *= 2; }, bonusText: 'Helium-3 ×2',
+    msg: ['🟠 Jupiter is so big that 1,300 Earths could fit inside it!', 'It\'s made of gas — scoop up its Helium-3.'] },
+  { id: 'saturn', name: 'Saturn', cost: { ore: 1.5e8, he3: 1e6, science: 5e5 }, travel: 45,
+    bonus: s => { s.m.sci *= 2; }, bonusText: 'Science ×2',
+    msg: ['🪐 Saturn\'s rings are made of chunks of ice and rock.', 'Saturn is so light it would float in a giant bathtub!'] },
+  { id: 'uranus', name: 'Uranus', cost: { ore: 8e8, he3: 8e6, science: 3e6 }, travel: 50,
+    bonus: s => { s.m.all *= 2; }, bonusText: 'ALL production ×2',
+    msg: ['🔵 Uranus spins on its side, like a rolling ball!', 'It\'s very far from city lights — great for telescopes.'] },
+  { id: 'neptune', name: 'Neptune', cost: { ore: 1.2e10, he3: 6e7, science: 1.5e7 }, travel: 55,
+    bonus: s => { s.m.all *= 2; }, bonusText: 'ALL production ×2',
+    msg: ['🔷 Neptune has the fastest winds in the Solar System.', 'Scientists think it rains DIAMONDS deep inside!'] },
+  { id: 'pluto', name: 'Pluto', cost: { ore: 3e11, he3: 4e8, science: 6e7 }, travel: 60,
+    bonus: s => { s.m.all *= 2; }, bonusText: 'ALL production ×2',
+    msg: ['🤍 Pluto — a dwarf planet at the edge of the Solar System. It has a heart-shaped glacier!', 'From here we can see the whole Solar System… time to build a Dyson Sphere around the Sun.'] },
+];
+
+const PROJECTS = [
+  // --- Earth ---
+  { id: 'pick', name: 'Steel Pickaxe', cost: { science: 5 }, desc: 'Mine 2× ore per click',
+    trig: s => s.b.scientist >= 1, fx: s => { s.m.click *= 2; } },
+  { id: 'bits', name: 'Diamond Drill Bits', cost: { science: 15 }, desc: 'Drills mine 2× faster',
+    trig: s => s.b.drill >= 5, fx: s => { s.m.drill *= 2; } },
+  { id: 'polish', name: 'Shiny Polished Ore', cost: { science: 30 }, desc: 'People want it more: demand ×1.5',
+    trig: s => s.oreTotal >= 1500, fx: s => { s.m.demand *= 1.5; } },
+  { id: 'coffee', name: 'Free Coffee', cost: { science: 40 }, desc: 'Scientists work 2× faster',
+    trig: s => s.b.scientist >= 4, fx: s => { s.m.scientist *= 2; } },
+  { id: 'jack', name: 'Jackhammers', cost: { science: 60 }, desc: 'Mine 5× ore per click',
+    trig: s => s.done.pick, fx: s => { s.m.click *= 5; } },
+  { id: 'jingle', name: 'Catchy Jingle', cost: { science: 80 }, desc: '"Ore, ore, it\'s never a bore!" Demand ×2',
+    trig: s => s.marketing >= 2, fx: s => { s.m.demand *= 2; } },
+  { id: 'hydra', name: 'Hydraulic Drills', cost: { science: 120, credits: 400 }, desc: 'Drills mine 2× faster',
+    trig: s => s.b.drill >= 15, fx: s => { s.m.drill *= 2; } },
+  { id: 'ai', name: 'Smart Pricing AI', cost: { science: 150 }, desc: 'A robot that sets your ore price for you',
+    trig: s => s.sciTotal >= 100, fx: s => { s.flags.ai = true; s.autoPrice = true; } },
+  { id: 'rocket', name: 'Rocket Science', cost: { science: 250, credits: 1500 }, desc: 'Start the SPACE PROGRAM 🚀',
+    trig: s => s.creditsTotal >= 800, fx: s => { s.flags.space = true; addLog('🚀 The Space Program is open! First stop: the Moon.'); } },
+  { id: 'super', name: 'Supercomputer', cost: { science: 400, credits: 4000 }, desc: 'Science ×2',
+    trig: s => s.done.rocket, fx: s => { s.m.sci *= 2; } },
+  { id: 'mega', name: 'Mega Drills', cost: { science: 900, credits: 10000 }, desc: 'Drills mine 3× faster',
+    trig: s => s.planets.moon, fx: s => { s.m.drill *= 3; } },
+  // --- Moon ---
+  { id: 'lowg', name: 'Low-Gravity Harvesting', cost: { science: 600 }, desc: 'Helium-3 ×2',
+    trig: s => s.planets.moon && s.b.harvester >= 3, fx: s => { s.m.he3 *= 2; } },
+  { id: 'tourism', name: 'Moon Tourism', cost: { science: 1000, credits: 20000 }, desc: 'Tourists buy moon rocks! Demand ×3',
+    trig: s => s.planets.moon, fx: s => { s.m.demand *= 3; } },
+  // --- Mars ---
+  { id: 'terra', name: 'Terraforming', cost: { science: 3000, he3: 500 }, desc: 'Make Mars greener. Habitats hold 2× colonists',
+    trig: s => s.planets.mars, fx: s => { s.m.habitat *= 2; } },
+  { id: 'robots', name: 'Robot Helpers', cost: { science: 5000 }, desc: 'Colonists get 3× more done',
+    trig: s => s.planets.mars && s.colonists >= 40, fx: s => { s.m.colonist *= 3; } },
+  { id: 'fusion', name: 'Fusion Drills', cost: { science: 8000, he3: 2000 }, desc: 'Helium-3 powered drills: 5× faster',
+    trig: s => s.planets.mars, fx: s => { s.m.drill *= 5; } },
+  // --- Venus ---
+  { id: 'cloudlab', name: 'Cloud Laboratories', cost: { science: 20000 }, desc: 'Science ×3',
+    trig: s => s.planets.venus, fx: s => { s.m.sci *= 3; } },
+  { id: 'trade', name: 'Interplanetary Trade', cost: { science: 30000, credits: 1e6 }, desc: 'Every planet buys ore: demand ×5',
+    trig: s => s.planets.venus, fx: s => { s.m.demand *= 5; } },
+  // --- Mercury ---
+  { id: 'heat', name: 'Heat-proof Robots', cost: { science: 60000 }, desc: 'ALL production ×1.5',
+    trig: s => s.planets.mercury, fx: s => { s.m.all *= 1.5; } },
+  // --- Asteroid belt ---
+  { id: 'drones', name: 'Mining Drones', cost: { science: 150000, he3: 50000 }, desc: 'Mining Ships ×3',
+    trig: s => s.planets.belt && s.b.ship >= 3, fx: s => { s.m.ship *= 3; } },
+  { id: 'platinum', name: 'Platinum Rush', cost: { science: 250000 }, desc: 'Asteroids have platinum! Demand ×10',
+    trig: s => s.planets.belt, fx: s => { s.m.demand *= 10; } },
+  // --- Jupiter ---
+  { id: 'shipyard', name: 'Orbital Shipyard', cost: { science: 500000 }, desc: 'Robots build Mining Ships for you automatically',
+    trig: s => s.planets.jupiter, fx: s => { s.flags.shipyard = true; } },
+  { id: 'storm', name: 'Great Red Spot Turbines', cost: { science: 800000 }, desc: 'Helium-3 ×5',
+    trig: s => s.planets.jupiter, fx: s => { s.m.he3 *= 5; } },
+  // --- Saturn ---
+  { id: 'titan', name: 'Titan Research Base', cost: { science: 2e6 }, desc: 'Science ×5',
+    trig: s => s.planets.saturn, fx: s => { s.m.sci *= 5; } },
+  { id: 'magnets', name: 'Ring Magnets', cost: { science: 5e6, he3: 5e6 }, desc: 'Ring Collectors ×4',
+    trig: s => s.planets.saturn && s.b.ring >= 3, fx: s => { s.m.ring *= 4; } },
+  // --- Uranus ---
+  { id: 'spin', name: 'Sideways Spin Generators', cost: { science: 2e7 }, desc: 'ALL production ×2',
+    trig: s => s.planets.uranus, fx: s => { s.m.all *= 2; } },
+  // --- Neptune ---
+  { id: 'triton', name: 'Triton Factory', cost: { science: 6e7 }, desc: 'Diamond Rain Catchers ×3',
+    trig: s => s.planets.neptune, fx: s => { s.m.diamond *= 3; } },
+  // --- Pluto ---
+  { id: 'heart', name: 'Heart of Pluto', cost: { science: 1e8 }, desc: 'ALL production ×2',
+    trig: s => s.planets.pluto, fx: s => { s.m.all *= 2; } },
+  { id: 'starship', name: '🌟 THE STARSHIP 🌟', cost: { ore: 5e12, he3: 2e9, science: 5e8 },
+    desc: 'Leave the Solar System and fly to another star!',
+    trig: s => s.b.dyson >= 100, fx: s => { s.won = true; s.winT = s.t; } },
+];
+const PMAP = Object.fromEntries(PROJECTS.map(p => [p.id, p]));
+
+function freshState(stars = 0) {
+  return {
+    v: 1, t: 0, ore: 0, oreTotal: 0, credits: 0, creditsTotal: 0, science: 0, sciTotal: 0, he3: 0,
+    price: 0.25, marketing: 0, selling: true, autoPrice: false, sellPct: 50, colonists: 0,
+    b: Object.fromEntries(BUILDINGS.map(b => [b.id, 0])),
+    done: {}, planets: { earth: true }, travel: null, won: false, winT: 0, winSeen: false,
+    m: { click: 1, drill: 1, scientist: 1, sci: 1, he3: 1, colonist: 1, habitat: 1, ship: 1, ring: 1, diamond: 1, demand: 1, all: 1 },
+    flags: {}, log: [], stars, buyAmt: 1,
+  };
+}
+let S = freshState();
+
+function addLog(msg) { S.log.unshift(msg); if (S.log.length > 40) S.log.length = 40; }
+
+function allMult(s) {
+  return s.m.all * (1 + 0.1 * s.b.solar) * (1 + 0.05 * s.b.dyson) * 2 ** s.stars;
+}
+function colCap(s) { return (s.b.habitat * 10 + s.b.cloudcity * 100) * s.m.habitat; }
+function rates(s) {
+  const all = allMult(s);
+  return {
+    ore: (s.b.drill * s.m.drill + s.colonists * 5 * s.m.colonist + s.b.ship * 2000 * s.m.ship
+          + s.b.ring * 5e4 * s.m.ring + s.b.diamond * 2e6 * s.m.diamond) * all,
+    sci: (s.b.scientist * 0.25 * s.m.scientist + s.colonists * 0.1 * s.m.colonist + s.b.telescope * 1000) * s.m.sci * all,
+    he3: (s.b.harvester * 0.4 + s.b.scoop * 100) * s.m.he3 * all,
+  };
+}
+const ELASTIC = 1.6;
+function demandAt(s, price) { return 4 * s.m.demand * 1.35 ** s.marketing / Math.pow(price, ELASTIC); }
+function marketingCost(s) { return 40 * 2 ** s.marketing; }
+
+function canAfford(cost) {
+  for (const k in cost) if ((S[k] || 0) < cost[k] - 1e-9) return false;
+  return true;
+}
+function pay(cost) { for (const k in cost) S[k] -= cost[k]; }
+
+function buyBuilding(id, amt) {
+  const def = BMAP[id];
+  let n = 0;
+  const max = amt === 'max' ? 10000 : amt;
+  while (n < max) {
+    const c = def.cost(S.b[id]);
+    if (!canAfford(c)) break;
+    pay(c); S.b[id]++; n++;
+  }
+  if (n && id === 'dyson' && S.b.dyson >= 100 && !S.flags.dysonDone) {
+    S.flags.dysonDone = true;
+    addLog('☀️ The Dyson Sphere is complete! Now we have enough power to build a STARSHIP.');
+  }
+  return n;
+}
+function buyProject(id) {
+  const p = PMAP[id];
+  if (S.done[id] || !canAfford(p.cost)) return false;
+  pay(p.cost); S.done[id] = true; p.fx(S);
+  addLog(`✅ ${p.name} — ${p.desc}`);
+  return true;
+}
+function nextDest(s) { return DESTS.find(d => !s.planets[d.id]); }
+function launch() {
+  const d = nextDest(S);
+  if (!d || S.travel || !S.flags.space || !canAfford(d.cost)) return false;
+  pay(d.cost);
+  S.travel = { id: d.id, left: d.travel, total: d.travel };
+  addLog(`🚀 Liftoff! Heading to ${d.name}…`);
+  return true;
+}
+function buyMarketing() {
+  const c = marketingCost(S);
+  if (S.credits < c) return;
+  S.credits -= c; S.marketing++;
+}
+
+function tick() {
+  const s = S;
+  const r = rates(s);
+  s.ore += r.ore * DT; s.oreTotal += r.ore * DT;
+  s.science += r.sci * DT; s.sciTotal += r.sci * DT;
+  s.he3 += r.he3 * DT;
+
+  const cap = colCap(s);
+  if (s.colonists < cap) s.colonists = Math.min(cap, s.colonists + Math.max(0.05, (cap - s.colonists) * 0.01));
+
+  // market
+  if (s.autoPrice && s.flags.ai) {
+    const target = Math.max(0.5, r.ore * s.sellPct / 100);
+    s.price = clampPrice(Math.pow(4 * s.m.demand * 1.35 ** s.marketing / target, 1 / ELASTIC));
+  }
+  if (s.selling) {
+    const sold = Math.min(s.ore, demandAt(s, s.price) * DT * (0.85 + Math.random() * 0.3));
+    s.ore -= sold; s.credits += sold * s.price; s.creditsTotal += sold * s.price;
+  }
+
+  // travel
+  if (s.travel) {
+    s.travel.left -= DT;
+    if (s.travel.left <= 0) {
+      const d = DESTS.find(x => x.id === s.travel.id);
+      s.travel = null; s.planets[d.id] = true; d.bonus(s);
+      for (const m of d.msg) addLog(m);
+      addLog(`🎉 Bonus: ${d.bonusText}`);
+      if (!nextDest(s)) addLog('You have reached every planet! Build Dyson Panels to surround the Sun.');
+    }
+  }
+
+  // automatic shipyard: builds one mining ship per second when affordable
+  if (s.flags.shipyard && s.t % 10 === 0) {
+    const c = BMAP.ship.cost(s.b.ship); // only spends spare resources (10%) so launches aren't starved
+    if (c.ore <= s.ore * 0.1 && c.he3 <= s.he3 * 0.1) buyBuilding('ship', 1);
+  }
+
+  // story beats
+  const once = (flag, cond, msg) => { if (!s.flags[flag] && cond) { s.flags[flag] = true; addLog(msg); } };
+  once('m1', s.oreTotal >= 10, 'People will pay money for ore! Try raising the price.');
+  once('m2', s.b.drill >= 1, 'Drills mine ore even when you aren\'t clicking.');
+  once('m3', s.b.scientist >= 1, 'Scientists make science. Spend science on Projects.');
+  once('m4', s.marketing >= 1, 'Marketing makes more people want your ore.');
+
+  s.t++;
+}
+function clampPrice(p) { return Math.min(1e12, Math.max(0.01, Math.round(p * 100) / 100 || 0.01)); }
+
+function mine() { const n = S.m.click; S.ore += n; S.oreTotal += n; }
+
+// =====================================================================
+//  FORMATTING
+// =====================================================================
+const BIG = [[1e21, 'sextillion'], [1e18, 'quintillion'], [1e15, 'quadrillion'], [1e12, 'trillion'], [1e9, 'billion'], [1e6, 'million']];
+function fmt(n, dec = 0) {
+  if (!isFinite(n)) return '∞';
+  if (n < 0) return '-' + fmt(-n, dec);
+  for (const [v, name] of BIG) if (n >= v) return (n / v).toFixed(2) + ' ' + name;
+  if (n >= 1000) return Math.floor(n).toLocaleString('en-US');
+  if (dec && n < 100) return n.toFixed(dec);
+  return String(Math.floor(n));
+}
+function fmtMoney(n) { return n < 1000 ? n.toFixed(2) : fmt(n); }
+const RES_LABEL = { credits: v => '$' + fmtMoney(v), ore: v => fmt(v) + ' ore', he3: v => fmt(v) + ' He-3', science: v => fmt(v) + ' science' };
+function fmtCost(cost) { return Object.entries(cost).map(([k, v]) => RES_LABEL[k](v)).join(' + '); }
+function fmtTime(ticks) {
+  const sec = Math.floor(ticks * DT), h = Math.floor(sec / 3600), m = Math.floor(sec / 60) % 60, s2 = sec % 60;
+  return (h ? h + 'h ' : '') + (h || m ? m + 'm ' : '') + s2 + 's';
+}
+
+// =====================================================================
+//  SAVE / LOAD
+// =====================================================================
+const SAVE_KEY = 'planetSimIdle_v1';
+function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) { } }
+function load() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return false;
+    const data = JSON.parse(raw), base = freshState();
+    S = Object.assign(base, data);
+    S.b = Object.assign(base.b, freshState().b, data.b);
+    S.m = Object.assign(freshState().m, data.m);
+    return true;
+  } catch (e) { return false; }
+}
+
+// =====================================================================
+//  UI
+// =====================================================================
+function initUI() {
+  const $ = id => document.getElementById(id);
+  const setText = (el, v) => { if (el.textContent !== v) el.textContent = v; };
+  const show = (el, v) => el.classList.toggle('hidden', !v);
+
+  $('mineBtn').onclick = () => { mine(); render(); };
+  $('priceUp').onclick = () => { S.autoPrice = false; S.price = clampPrice(S.price + priceStep(S.price, true)); render(); };
+  $('priceDown').onclick = () => { S.autoPrice = false; S.price = clampPrice(S.price - priceStep(S.price, false)); render(); };
+  $('sellBtn').onclick = () => { S.selling = !S.selling; render(); };
+  $('aiBtn').onclick = () => { S.autoPrice = !S.autoPrice; render(); };
+  $('mktBtn').onclick = () => { buyMarketing(); render(); };
+  $('launchBtn').onclick = () => { launch(); render(); };
+  $('resetBtn').onclick = () => {
+    if (confirm('Start over from the very beginning? All progress will be lost.')) {
+      S = freshState(); addLog('Welcome, Commander. Earth is full of ore. Start mining!'); save(); render();
+    }
+  };
+  $('ngBtn').onclick = () => {
+    const stars = S.stars + 1;
+    S = freshState(stars);
+    addLog(`⭐ New Game+ #${stars}: everything is ×${2 ** stars} faster. Go go go!`);
+    save(); render();
+  };
+  $('keepBtn').onclick = () => { S.winSeen = true; render(); };
+
+  function priceStep(p, up) {
+    if (p < 1 || (!up && p <= 1)) return 0.01;
+    if (p < 10 || (!up && p <= 10)) return 0.1;
+    if (p < 100 || (!up && p <= 100)) return 1;
+    return Math.pow(10, Math.floor(Math.log10(p)) - 1);
+  }
+
+  // sell % selector
+  for (const pct of [25, 50, 75, 100]) {
+    const b = document.createElement('button');
+    b.textContent = pct + '%'; b.dataset.v = pct;
+    b.onclick = () => { S.sellPct = pct; S.autoPrice = true; render(); };
+    $('sellPct').appendChild(b);
+  }
+  // buy amount selector
+  for (const v of [1, 10, 100, 'max']) {
+    const b = document.createElement('button');
+    b.textContent = v === 'max' ? 'Max' : '×' + v; b.dataset.v = v;
+    b.onclick = () => { S.buyAmt = v; render(); };
+    $('buyAmt').appendChild(b);
+  }
+
+  // buildings
+  const bEls = {};
+  for (const def of BUILDINGS) {
+    const div = document.createElement('div');
+    div.className = 'bld hidden';
+    div.innerHTML = `<button></button> <span class="nm">${def.name}</span>: <b class="n">0</b>
+      <div class="cost"></div><div class="muted" style="font-size:12px">${def.desc}<span class="each"></span></div>`;
+    div.querySelector('button').onclick = () => { buyBuilding(def.id, S.buyAmt); render(); };
+    $('bld-' + def.sec).appendChild(div);
+    bEls[def.id] = { div, btn: div.querySelector('button'), n: div.querySelector('.n'), cost: div.querySelector('.cost'), each: div.querySelector('.each') };
+  }
+
+  // projects are rebuilt only when the visible list changes
+  let projKey = '';
+  const projEls = {};
+  function renderProjects() {
+    const avail = PROJECTS.filter(p => !S.done[p.id] && p.trig(S));
+    const key = avail.map(p => p.id).join(',');
+    if (key !== projKey) {
+      projKey = key;
+      const box = $('projects'); box.innerHTML = '';
+      for (const p of avail) {
+        const b = document.createElement('button');
+        b.className = 'proj';
+        b.innerHTML = `<div class="t">${p.name} <span class="c">(${fmtCost(p.cost)})</span></div><div class="d">${p.desc}</div>`;
+        b.onclick = () => { buyProject(p.id); render(); };
+        box.appendChild(b);
+        projEls[p.id] = b;
+      }
+      if (!avail.length) box.innerHTML = '<div class="muted">No projects right now… keep going!</div>';
+    }
+    for (const p of avail) projEls[p.id].disabled = !canAfford(p.cost);
+    return avail.length > 0 || Object.keys(S.done).length > 0;
+  }
+
+  let lastLog = '';
+  function render() {
+    const r = rates(S);
+    setText($('clock'), fmtTime(S.t) + (S.stars ? '  ·  ' + '⭐'.repeat(Math.min(S.stars, 10)) : ''));
+    const logKey = S.log.slice(0, 8).join('|');
+    if (logKey !== lastLog) { lastLog = logKey; $('log').innerHTML = S.log.slice(0, 8).map(l => `<div>${escapeHtml(l)}</div>`).join(''); }
+
+    setText($('oreBig'), fmt(S.oreTotal));
+    setText($('oreRateBig'), r.ore >= 1 ? `mined (+${fmt(r.ore, 1)}/sec)` : 'mined');
+    setText($('credits'), fmtMoney(S.credits));
+    setText($('ore'), fmt(S.ore));
+    setText($('price'), fmtMoney(S.price));
+    setText($('demand'), fmt(demandAt(S, S.price), 1));
+    const sb = $('sellBtn'); setText(sb, S.selling ? 'Selling: ON' : 'Selling: OFF'); sb.classList.toggle('on', S.selling);
+    show($('aiRow'), S.flags.ai);
+    const ab = $('aiBtn'); setText(ab, S.autoPrice ? 'Smart Pricing: ON' : 'Smart Pricing: OFF'); ab.classList.toggle('on', S.autoPrice);
+    for (const b of $('sellPct').children) b.classList.toggle('on', +b.dataset.v === S.sellPct && S.autoPrice);
+    for (const b of $('buyAmt').children) b.classList.toggle('on', String(b.dataset.v) === String(S.buyAmt));
+
+    show($('mktRow'), S.creditsTotal >= 25);
+    setText($('mktLvl'), String(S.marketing));
+    setText($('mktCost'), '$' + fmtMoney(marketingCost(S)));
+    $('mktBtn').disabled = S.credits < marketingCost(S);
+
+    show($('secMining'), S.b.drill > 0 || BUILDINGS[0].unlock(S));
+    setText($('oreRate'), fmt(r.ore, 1));
+
+    show($('secResearch'), S.b.scientist > 0 || BMAP.scientist.unlock(S));
+    setText($('science'), fmt(S.science));
+    setText($('sciRate'), fmt(r.sci, 2));
+
+    let colonyVisible = false;
+    for (const def of BUILDINGS) {
+      const e = bEls[def.id];
+      const unlocked = def.planet ? !!S.planets[def.planet] : (S.b[def.id] > 0 || def.unlock(S));
+      show(e.div, unlocked);
+      if (!unlocked) continue;
+      if (def.sec === 'colonies') colonyVisible = true;
+      const amt = S.buyAmt === 'max' ? 1 : S.buyAmt;
+      const c = bulkCost(def, amt);
+      setText(e.btn, S.buyAmt === 'max' ? 'Build max' : amt === 1 ? 'Build' : 'Build ' + amt);
+      setText(e.n, fmt(S.b[def.id]));
+      setText(e.cost, 'Cost: ' + fmtCost(c));
+      if (EACH[def.id]) { const [v, u] = EACH[def.id](S); setText(e.each, ` — upgraded: ${fmt(v, 2)} ${u}/sec each`); }
+      e.btn.disabled = !canAfford(S.buyAmt === 'max' ? def.cost(S.b[def.id]) : c);
+    }
+    show($('buyAmtRow'), S.planets.moon);
+
+    show($('secProjects'), renderProjects());
+
+    // space
+    show($('secSpace'), S.flags.space);
+    const d = nextDest(S);
+    show($('launchBox'), !S.travel && d);
+    show($('travelBox'), !!S.travel);
+    if (d && !S.travel) {
+      setText($('destName'), d.name);
+      setText($('destCost'), 'Cost: ' + fmtCost(d.cost) + ' · trip: ' + d.travel + 's');
+      $('launchBtn').disabled = !canAfford(d.cost);
+    }
+    if (S.travel) {
+      const td = DESTS.find(x => x.id === S.travel.id);
+      setText($('travelName'), td.name);
+      setText($('travelLeft'), Math.ceil(S.travel.left) + 's');
+      $('travelBar').style.width = (100 * (1 - S.travel.left / S.travel.total)) + '%';
+    }
+    const col = DESTS.filter(x => S.planets[x.id]).map(x => x.name.replace('the ', ''));
+    setText($('colonized'), col.length ? 'Colonized: Earth, ' + col.join(', ') : '');
+
+    show($('secColonies'), colonyVisible);
+    setText($('he3'), fmt(S.he3));
+    setText($('he3Rate'), fmt(r.he3, 1));
+    show($('colRow'), S.planets.mars);
+    setText($('colonists'), fmt(S.colonists));
+    setText($('colCap'), fmt(colCap(S)));
+    const am = allMult(S);
+    show($('bonusRow'), am > 1.001);
+    setText($('allMult'), am < 100 ? am.toFixed(2) : fmt(am));
+    show($('dysonRow'), S.planets.pluto);
+    setText($('dysonPct'), String(Math.min(100, S.b.dyson)));
+    $('dysonBar').style.width = Math.min(100, S.b.dyson) + '%';
+
+    show($('win'), S.won && !S.winSeen);
+    if (S.won) setText($('winStats'), `Time: ${fmtTime(S.winT)} · Ore mined: ${fmt(S.oreTotal)}`);
+  }
+  function bulkCost(def, amt) {
+    const total = {};
+    for (let i = 0; i < amt; i++) {
+      const c = def.cost(S.b[def.id] + i);
+      for (const k in c) total[k] = (total[k] || 0) + c[k];
+    }
+    return total;
+  }
+  function escapeHtml(t) { return t.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
+
+  // ---------------- Solar system map ----------------
+  const cv = $('map'), g = cv.getContext('2d');
+  const MAP = [
+    { id: 'mercury', name: 'Mercury', c: '#b8b0a8', r: 4 },
+    { id: 'venus', name: 'Venus', c: '#f0d49a', r: 7 },
+    { id: 'earth', name: 'Earth', c: '#3d8bff', r: 7.5 },
+    { id: 'mars', name: 'Mars', c: '#d9603b', r: 5 },
+    { id: 'belt', name: 'Asteroids', c: '#a39e96', r: 0 },
+    { id: 'jupiter', name: 'Jupiter', c: '#e3b988', r: 17 },
+    { id: 'saturn', name: 'Saturn', c: '#f1d9a0', r: 14, ring: true },
+    { id: 'uranus', name: 'Uranus', c: '#9fe3e8', r: 10 },
+    { id: 'neptune', name: 'Neptune', c: '#5b7cff', r: 10 },
+    { id: 'pluto', name: 'Pluto', c: '#e8dcd0', r: 3 },
+  ];
+  const stars = Array.from({ length: 120 }, () => [Math.random(), Math.random(), Math.random()]);
+  function mapX(i, w) { return 90 + (w - 120) * i / (MAP.length - 1); }
+  function planetPos(id, w, h) {
+    if (id === 'moon') { const i = 2; return { x: mapX(i, w) + 13, y: h / 2 - 16 }; }
+    const i = MAP.findIndex(p => p.id === id);
+    return { x: mapX(i, w), y: h / 2 };
+  }
+  function drawMap(now) {
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const w = cv.clientWidth, h = cv.clientHeight;
+    if (cv.width !== Math.round(w * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, w, h);
+    for (const [x, y, b] of stars) { g.fillStyle = `rgba(255,255,255,${0.2 + 0.5 * b * (0.6 + 0.4 * Math.sin(now / 900 + b * 20))})`; g.fillRect(x * w, y * h, 1.2, 1.2); }
+    // sun, with dyson panels
+    const sg = g.createRadialGradient(-10, h / 2, 10, -10, h / 2, 90);
+    sg.addColorStop(0, '#fff6c8'); sg.addColorStop(0.45, '#ffc234'); sg.addColorStop(0.6, 'rgba(255,150,40,0.35)'); sg.addColorStop(1, 'rgba(255,120,0,0)');
+    g.fillStyle = sg; g.beginPath(); g.arc(-10, h / 2, 90, 0, Math.PI * 2); g.fill();
+    if (S.b.dyson > 0) {
+      g.fillStyle = '#9fd3ff';
+      for (let i = 0; i < Math.min(100, S.b.dyson); i++) {
+        const a = -Math.PI / 2 + Math.PI * (i + 0.5) / 100;
+        g.fillRect(-10 + Math.cos(a) * 62 - 1.5, h / 2 + Math.sin(a) * 62 - 1.5, 3, 3);
+      }
+    }
+    const dest = S.travel ? S.travel.id : (S.flags.space ? nextDest(S)?.id : null);
+    g.textAlign = 'center'; g.font = '11px Courier New, monospace';
+    const drawOne = (id, name, c, r, ring, pos) => {
+      const owned = !!S.planets[id];
+      const isDest = id === dest;
+      g.globalAlpha = owned ? 1 : isDest ? 0.75 : 0.28;
+      if (id === 'belt') {
+        g.fillStyle = c;
+        for (let k = 0; k < 26; k++) g.fillRect(pos.x - 7 + (k * 37 % 15), pos.y - 34 + k * 2.7, 1.8, 1.8);
+      } else {
+        if (ring) { g.strokeStyle = c; g.lineWidth = 2; g.beginPath(); g.ellipse(pos.x, pos.y, r * 1.9, r * 0.5, -0.3, 0, Math.PI * 2); g.stroke(); }
+        g.fillStyle = owned || isDest ? c : '#666';
+        g.beginPath(); g.arc(pos.x, pos.y, r, 0, Math.PI * 2); g.fill();
+      }
+      g.globalAlpha = 1;
+      if (isDest) {
+        g.strokeStyle = 'rgba(255,209,102,' + (0.5 + 0.5 * Math.sin(now / 250)) + ')'; g.lineWidth = 1.5;
+        g.beginPath(); g.arc(pos.x, pos.y, Math.max(r, 12) + 6, 0, Math.PI * 2); g.stroke();
+      }
+      if (owned && id !== 'moon') { g.fillStyle = '#6ee7a8'; g.fillText('✔', pos.x, pos.y - Math.max(r, 20) - 6); }
+      if (name) { g.fillStyle = owned ? '#dfe4ff' : isDest ? '#ffd166' : '#555c80'; g.fillText(name, pos.x, h - 10); }
+    };
+    MAP.forEach(p => drawOne(p.id, p.name, p.c, p.r, p.ring, planetPos(p.id, w, h)));
+    drawOne('moon', null, '#cfcfcf', 2.5, false, planetPos('moon', w, h));
+    // rocket
+    if (S.travel) {
+      const order = ['earth', ...DESTS.map(d => d.id)];
+      const fromId = order[order.indexOf(S.travel.id) - 1];
+      const a = planetPos(fromId, w, h), b = planetPos(S.travel.id, w, h);
+      const k = 1 - S.travel.left / S.travel.total;
+      const x = a.x + (b.x - a.x) * k, y = a.y + (b.y - a.y) * k - Math.sin(k * Math.PI) * 30;
+      g.strokeStyle = 'rgba(255,209,102,.35)'; g.setLineDash([3, 4]); g.beginPath();
+      for (let t = 0; t <= k; t += 0.02) { const xx = a.x + (b.x - a.x) * t, yy = a.y + (b.y - a.y) * t - Math.sin(t * Math.PI) * 30; t ? g.lineTo(xx, yy) : g.moveTo(xx, yy); }
+      g.stroke(); g.setLineDash([]);
+      g.font = '18px sans-serif'; g.fillText('🚀', x, y + 6);
+    }
+    requestAnimationFrame(drawMap);
+  }
+
+  if (!load()) addLog('Welcome, Commander. Earth is full of ore. Start mining!');
+  render();
+  requestAnimationFrame(drawMap);
+  setInterval(() => { tick(); render(); }, DT * 1000);
+  setInterval(save, 5000);
+  addEventListener('beforeunload', save);
+}
+
+if (typeof document !== 'undefined') initUI();
+</script>
+</body>
+</html>
